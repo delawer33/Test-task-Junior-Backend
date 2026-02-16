@@ -14,6 +14,7 @@
 Для работы с API не нужно реализовывать механизм OAuth-авторизации. Достаточно:
 1. Создать приложение в [App Dashboard](https://developers.facebook.com/apps/).
 2. Получить временный Access Token, следуя шагам в [официальной документации](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/get-started).
+- Токен получите напрямую в App Dashboard, не нужно реализовывать механизм авторизации.
 3. Использовать полученный токен в коде через переменные окружения.
 
 ---

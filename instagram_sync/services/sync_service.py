@@ -1,5 +1,6 @@
-from typing import List, Dict, Any
+from typing import List
 from django.utils.dateparse import parse_datetime
+from django.db import transaction
 from ..models import Post
 from .ig_client import InstagramClient
 
@@ -14,15 +15,25 @@ class SyncService:
 
     def sync_posts(self) -> List[Post]:
         """
-        Получает все медиа-объекты пользователя из Instagram и сохраняет/обновляет их в БД.
-        Реализует логику Upsert.
+        Синхронизирует посты из Instagram в локальную БД
+        Bulk Upsert: массовое создание и обновление
+        
+        Можно добавить логику для удаления поста, если он 
+        не существует в Instagram (удален)
         """
+
         media_data = self.client.get_user_media()
-        synced_posts = []
+
+        existing_posts = Post.objects.in_bulk(field_name="ig_id")
+
+        to_create = []
+        to_update = []
 
         for item in media_data:
             ig_id = item.get("id")
-            defaults = {
+
+            data = {
+                "ig_id": ig_id,
                 "caption": item.get("caption"),
                 "media_type": item.get("media_type"),
                 "media_url": item.get("media_url"),
@@ -32,10 +43,30 @@ class SyncService:
                 else None,
             }
 
-            # Обновляем существующий пост или создаем новый (логика Upsert)
-            post, created = Post.objects.update_or_create(
-                ig_id=ig_id, defaults=defaults
-            )
-            synced_posts.append(post)
+            if ig_id in existing_posts:
+                post = existing_posts[ig_id]
 
-        return synced_posts
+                for field, value in data.items():
+                    setattr(post, field, value)
+
+                to_update.append(post)
+            else:
+                to_create.append(Post(**data))
+
+        with transaction.atomic():
+            if to_create:
+                Post.objects.bulk_create(to_create)
+
+            if to_update:
+                Post.objects.bulk_update(
+                    to_update,
+                    fields=[
+                        "caption",
+                        "media_type",
+                        "media_url",
+                        "permalink",
+                        "timestamp",
+                    ],
+                )
+
+        return list(existing_posts.values()) + to_create
